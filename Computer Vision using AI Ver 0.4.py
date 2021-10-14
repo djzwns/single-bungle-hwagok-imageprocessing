@@ -213,6 +213,11 @@ def guiMenuInit() -> None:  # 추가적인 메뉴바를 설정한다
     #cvImage3Menu.add_command(label="블러", command=blur_cv)
     cvImage3Menu.add_command(label="엠보싱", command=embossing_cv)
 
+    cvImage4Menu = Menu(cvProcessMenu)
+    cvProcessMenu.add_cascade(label="컴퓨터비전", menu=cvImage4Menu)
+    cvImage4Menu.add_command(label="색 추출", command=colorPick_cv)
+    cvImage4Menu.add_command(label="얼굴인식", command=frontFace_cv)
+
     guiInitialized = True
 
 
@@ -931,6 +936,37 @@ def embossing_cv():
     cv2output()
     displayImage()
 
+
+def colorPick_cv():
+    global outCvImage, inCvImage
+
+    hsv = cv2.cvtColor(inCvImage, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv)
+    h_orange = cv2.inRange(h, 8, 20)
+
+    outCvImage = cv2.bitwise_and(hsv, hsv, mask=h_orange)
+    outCvImage = cv2.cvtColor(outCvImage, cv2.COLOR_HSV2BGR)
+    cv2output()
+    displayImage()
+
+
+def frontFace_cv():
+    global outCvImage, inCvImage
+
+    # 학습 된 모델 불러오기
+    face_clf = cv2.CascadeClassifier("haar/haarcascade_frontalface_alt.xml")
+
+    # 얼굴 찾기
+    gray = cv2.cvtColor(inCvImage, cv2.COLOR_BGR2GRAY)
+    face_rects = face_clf.detectMultiScale(gray, 1.1, 5) # 파라미터 조절 가능
+    print(face_rects)
+    outCvImage = inCvImage[:]
+
+    for (x, y, w, h) in face_rects:
+        cv2.rectangle(outCvImage, (x, y), (x + w, y + h), (0, 255, 0), 3)
+
+    cv2output()
+    displayImage()
 
 
 # global variable -----------------
