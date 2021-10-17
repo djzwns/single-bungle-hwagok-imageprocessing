@@ -8,10 +8,8 @@
 # import --------------------------
 import copy
 import math
-import os.path
 import time
-from tkinter import *
-from tkinter import messagebox
+import os
 from tkinter.simpledialog import *
 from tkinter.filedialog import *
 import cv2
@@ -48,33 +46,32 @@ class Detection(Enum):
     TV = 20
 
 
-class VideoPlayer():
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+
+class VideoPlayer:
     def __init__(self, mainWindow):
         self.thread = threading.Thread(target=self.run)
         self.thread.daemon = True
-        self.flag = threading.Event()
         self.window = mainWindow
         self.panel = None
         self.video = None
+        self.s_factor = 0.3
+        self.fps = 1.0 / 10.0
+        self.frame_cnt = 0
+        self.eyeCascade = cv2.CascadeClassifier("haar/haarcascade_eye.xml")
+        self.faceCascade = cv2.CascadeClassifier("haar/haarcascade_frontalface_alt.xml")
+        self.glasses = cv2.imread("images/sunglasses.png", flags=cv2.IMREAD_UNCHANGED)
 
     def run(self):
-        self.video = cv2.VideoCapture(filename)
-        s_factor = 0.3
-
-        if not self.video.isOpened():
-            return
-
-        frame_w = self.video.get(cv2.CAP_PROP_FRAME_WIDTH)
-        frame_h = self.video.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        frame_cnt = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
+        global DetectionType
         current_frame = 0
         prev_time = 0
-        FPS = 1.0 / 10.0
 
-        # window, canvas, paper 이미지에 맞게 설정
-        self.window.geometry("{}x{}".format(int(frame_w * s_factor), int(frame_h * s_factor)))
-
-        while not self.flag.is_set():
+        while self.video.isOpened():
             ret, frame = self.video.read()
             if not ret:
                 continue
@@ -82,14 +79,19 @@ class VideoPlayer():
             current_time = time.time() - prev_time
             current_frame += 1
 
-            if current_time <= FPS:
+            if current_time <= self.fps:
                 continue
 
-            image = cv2.resize(frame, None, fx=s_factor, fy=s_factor, interpolation=cv2.INTER_AREA)
-            ssdNet(image)
+            image = cv2.resize(frame, None, fx=self.s_factor, fy=self.s_factor, interpolation=cv2.INTER_AREA)
+            if DetectionType > -2:
+                ssdNet(image)
+            else:
+                self.glassesOnFace(image)
+
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             image = Image.fromarray(image)
             image = ImageTk.PhotoImage(image=image)
+            self.currentImage = frame
 
             if self.panel is None:
                 self.panel = Label(self.window, image=image)
@@ -99,35 +101,106 @@ class VideoPlayer():
                 self.panel.config(image=image)
                 self.panel.image = image
 
-            key = cv2.waitKey(0)
-            if key == 27:
+            if current_frame >= self.frame_cnt:
                 break
-            if key == (ord('c') or ord('C')):
-                snapshot(frame)
-
-            if current_frame >= frame_cnt:
-                self.flag.set()
 
         print("thread close")
-        self.video.release()
 
-    def start(self):
-        self.thread.start()
+    def open(self, videoname):
+        self.video = cv2.VideoCapture(videoname)
+
+        if not self.video.isOpened():
+            return
+
+        frame_w = self.video.get(cv2.CAP_PROP_FRAME_WIDTH)
+        frame_h = self.video.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        self.frame_cnt = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        # window 크기 초기화
+        self.window.geometry("{}x{}".format(int(frame_w * self.s_factor), int(frame_h * self.s_factor)))
+
+        if not self.thread.is_alive():
+            print("open and start")
+            self.restart()
 
     def stop(self):
+        if self.panel is not None:
+            self.panel.destroy()
+            self.panel = None
         if self.thread.is_alive():
-            self.flag.set()
-            if self.panel is not None:
-                self.panel.destroy()
-                self.panel = None
-            self.thread.join()
-            self.flag.clear()
+            print("stop: video release")
+            self.video.release()
+
+    def restart(self):
+        self.thread = threading.Thread(target=self.run)
+        self.thread.daemon = True
+        self.thread.start()
+
+    def glassesOnFace(self, image) -> None:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        face_rects = self.faceCascade.detectMultiScale(gray, 1.1, 2)
+
+        for (fx, fy, fw, fh) in face_rects:
+            cropImg = gray[fy:fy + fh, fx:fx + fw]
+            eye_points = []
+            eye_rects = self.eyeCascade.detectMultiScale(cropImg, 1.1, 2)
+            # cv2.rectangle(image, (fx, fy), (fx + fw, fy + fh), (255, 0, 0), 2)
+            for (ex, ey, ew, eh) in eye_rects:
+                c_x = int(fx + ex + ew * 0.5)
+                c_y = int(fy + ey + eh * 0.5)
+                eye_points.append(Point(c_x, c_y))
+
+                # cv2.circle(image, (c_x, c_y), int(ew * 0.5), (0, 255, 0), 2)
+
+            if len(eye_points) == 2:
+                eye1 = eye_points[0]
+                eye2 = eye_points[1]
+
+                if eye1.x > eye2.x:
+                    t = eye1
+                    eye1 = eye2
+                    eye2 = t
+
+                eye_w = abs(eye2.x - eye1.x)
+                eye_h = abs(eye2.y - eye1.y)
+
+                if eye_w > eye_h:
+                    img_scale = eye_w / 330.0
+                    offsetx = 150 * img_scale
+                    offsety = 160 * img_scale
+
+                    w = self.glasses.shape[1] * img_scale
+                    h = self.glasses.shape[0] * img_scale
+                    resize_glasses = cv2.resize(self.glasses, dsize=(int(w), int(h)))
+                    self.overlayImage(image, resize_glasses, Point(eye1.x - offsetx, eye1.y - offsety))
+
+    def overlayImage(self, image, reimg, point):
+        for y in range(max(int(point.y), 0), image.shape[0]):
+            fY = int(y - point.y)
+
+            if fY >= reimg.shape[0]:
+                break
+
+            for x in range(max(int(point.x), 0), image.shape[1]):
+                fX = int(x - point.x)
+
+                if fX >= reimg.shape[1]:
+                    break
+
+                opacity = reimg[fY, fX, 3] / 255.0
+
+                for c in range(image.shape[2]):
+                    rex = reimg[fY, fX, c]
+                    imx = image[y, x, c]
+                    image[y, x, c] = imx * (1.0 - opacity) + rex * opacity
+
+
 
 
 # functions -----------------------
 # common function
 def currentTime() -> str:
-    return datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+    return datetime.now().strftime("%Y.%m.%d_%H-%M-%S")
 
 
 def clamp(_min: int, _max: int, val: int) -> int:  # val 값을 _min~_max 사이의 값으로 잘라주는 함수
@@ -152,7 +225,7 @@ def malloc2d(h: int, w: int):  # 이미지 크기 만큼 메모리 구성
 def openImage() -> None:  # 이미지를 여는 함수
     global window, inH, inW, filename, inCvImage, outCvImage
     global inImageR, inImageG, inImageB, outImageR, outImageG, outImageB
-    global videoPlayer
+    global videoPlayer, canvas
 
     # 이미지 파일 경로 불러오기
     filename = askopenfilename(parent=window,
@@ -161,6 +234,9 @@ def openImage() -> None:  # 이미지를 여는 함수
                                    ("동영상 파일", "*.mp4;*.avi"),
                                    ("모든 파일", "*.*")])
 
+
+    if canvas is not None:
+        canvas.destroy()
     videoPlayer.stop()
     ext = filename.rsplit('.', 1)[1]
     if ext != "mp4" and ext != "avi":
@@ -196,7 +272,7 @@ def openImage() -> None:  # 이미지를 여는 함수
     else:  # 동영상
         guiMenuDelete()
         guiMenu2Init()
-        displayVideo()
+        videoPlayer.open(filename)
 
 
 def saveImage() -> None:
@@ -251,12 +327,6 @@ def displayImage() -> None:
             tmpString += "#%02x%02x%02x  " % (r, g, b)
         rgbString += '{' + tmpString + '}  '
     paper.put(rgbString)
-
-
-def displayVideo() -> None:
-    global videoPlayer
-
-    videoPlayer.start()
 
 
 def guiInit(width: int = 300, height: int = 300, title: str = "") -> None:  # gui 초기화
@@ -379,6 +449,14 @@ def guiMenu2Init() -> None:  # 추가적인 메뉴바를 설정한다
 
     myProcessMenu = Menu(mainMenu)
     mainMenu.add_cascade(label="동영상처리", menu=myProcessMenu)
+
+    videoMenu = Menu(myProcessMenu)
+    myProcessMenu.add_command(label="캡쳐", command=lambda: snapshot(videoPlayer.currentImage))
+    myProcessMenu.add_command(label="전체감지", command=lambda: setDetection(-1))
+    myProcessMenu.add_command(label="사람감지", command=lambda: setDetection(15))
+    myProcessMenu.add_command(label="자동차감지", command=lambda: setDetection(7))
+    myProcessMenu.add_command(label="안경써요", command=lambda: setDetection(-2))
+
     gui2Initialized = True
 
 
@@ -401,7 +479,7 @@ def ssdNet(image) -> None:
         if confidence > CONF_VALUE:
             idx = int(detections[0, 0, i, 1])
 
-            if DetectionType == Detection.Any:
+            if DetectionType == -1:
                 pass
             elif idx != DetectionType:
                 continue
@@ -1116,7 +1194,7 @@ def bw2_cv():
 def zoom_cv():
     global outCvImage, inCvImage, inH, inW
     scale = askfloat("확대/축소", "배율 입력(0.1~4.0)", minvalue=1.0, maxvalue=4.0)
-    outCvImage = cv2.resize(inCvImage, dsize=(inW * scale, inH * scale), interpolation=cv2.INTER_NEAREST)
+    outCvImage = cv2.resize(inCvImage, dsize=(int(inW * scale), int(inH * scale)), interpolation=cv2.INTER_NEAREST)
     cv2output()
     displayImage()
 
@@ -1174,7 +1252,12 @@ def setDetection(detection) -> None:
 
 
 def snapshot(image):
-    cv2.imwrite("./images/save" + currentTime() + ".png", image)
+    directory = "snapshot"
+    if not os.path.isdir(directory):
+        os.mkdir(directory)
+    snapname = directory + "/snap" + currentTime() + ".png"
+    print(snapname)
+    cv2.imwrite(snapname, image)
 
 
 # global variable -----------------
@@ -1193,11 +1276,10 @@ outImageR, outImageG, outImageB, outH, outW = None, None, None, 0, 0
 inCvImage, outCvImage = None, None
 grayscale = None
 
-DetectionType = Detection.Any
+DetectionType: int = -1
 videoPlayer = None
 
 # main code -----------------------
-print(currentTime())
 guiInit(title="Computer Vision Ver 0.5")
 videoPlayer = VideoPlayer(window)
 window.mainloop()
