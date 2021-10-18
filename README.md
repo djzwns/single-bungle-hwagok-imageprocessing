@@ -7,18 +7,18 @@
 + 프로젝트 전 웜업
 ### Computer Vision using AI Ver 0.5
 + 실행 예시
-<img src="https://user-images.githubusercontent.com/17754057/137663478-2aa4b273-19da-494b-904e-0e765385ad1b.gif" width="640">
++ <img src="https://user-images.githubusercontent.com/17754057/137663478-2aa4b273-19da-494b-904e-0e765385ad1b.gif" width="640">
 + 기능 정리
 	- 이미지처리
 		* 직접 구현: 화소점, 기하학, 화소영역 처리로 구분
 		* openCV : 직접 구현했던 기능을 opencv를 활용해 일부 재현
-		<img src="https://user-images.githubusercontent.com/17754057/137662028-2aa0f312-27ca-48b1-b67a-11ed4bb63480.png"  width="480">
+		* <img src="https://user-images.githubusercontent.com/17754057/137662028-2aa0f312-27ca-48b1-b67a-11ed4bb63480.png"  width="480">
 	- 동영상처리
 		* 사물인식
 		* 얼굴인식: 사물인식에서 사람만 추출
 		* 자동차인식: 사물인식에서 차량만 추출
 		* 안경씌우기: 눈동자를 찾아서 안경을 씌움
-		<img src="https://user-images.githubusercontent.com/17754057/137662012-b101dca0-4787-4a66-a316-bb7ef042fa28.png"  width="480">
+		* <img src="https://user-images.githubusercontent.com/17754057/137662012-b101dca0-4787-4a66-a316-bb7ef042fa28.png"  width="480">
 
 ### Ver 0.4
 + 정사각형 그레이스케일 raw 이미지만 처리 가능
