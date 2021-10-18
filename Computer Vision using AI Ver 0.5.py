@@ -65,22 +65,25 @@ class VideoPlayer:
         self.eyeCascade = cv2.CascadeClassifier("haar/haarcascade_eye.xml")
         self.faceCascade = cv2.CascadeClassifier("haar/haarcascade_frontalface_alt.xml")
         self.glasses = cv2.imread("images/sunglasses.png", flags=cv2.IMREAD_UNCHANGED)
+        self.current_frame = 0
+        self.prev_time = 0
 
     def run(self):
         global DetectionType
-        current_frame = 0
-        prev_time = 0
+        self.current_frame = 0
+        self.prev_time = 0
 
         while self.video.isOpened():
             ret, frame = self.video.read()
             if not ret:
                 continue
 
-            current_time = time.time() - prev_time
-            current_frame += 1
+            current_time = time.time() - self.prev_time
+            self.current_frame += 1
 
             if current_time <= self.fps:
                 continue
+            self.prev_time = current_time
 
             image = cv2.resize(frame, None, fx=self.s_factor, fy=self.s_factor, interpolation=cv2.INTER_AREA)
             if DetectionType > -2:
@@ -101,10 +104,14 @@ class VideoPlayer:
                 self.panel.config(image=image)
                 self.panel.image = image
 
-            if current_frame >= self.frame_cnt:
+            if self.current_frame >= self.frame_cnt:
                 break
 
         print("thread close")
+        self.panel.config(image=None)
+        self.panel.image = None
+        self.panel.destroy()
+        self.panel = None
 
     def open(self, videoname):
         self.video = cv2.VideoCapture(videoname)
@@ -125,11 +132,16 @@ class VideoPlayer:
 
     def stop(self):
         if self.panel is not None:
+            self.panel.config(image=None)
+            self.panel.image = None
             self.panel.destroy()
             self.panel = None
         if self.thread.is_alive():
             print("stop: video release")
             self.video.release()
+        # 실행중이던 정보 초기화
+        self.current_frame = 0
+        self.prev_time = 0
 
     def restart(self):
         self.thread = threading.Thread(target=self.run)
@@ -343,7 +355,6 @@ def guiInit(width: int = 300, height: int = 300, title: str = "") -> None:  # gu
     fileMenu = Menu(mainMenu)
     mainMenu.add_cascade(label="파일", menu=fileMenu)
     fileMenu.add_command(label="열기", command=openImage)
-    fileMenu.add_command(label="저장", command=saveImage)
     fileMenu.add_separator()
     fileMenu.add_command(label="닫기", command=exit)
 
@@ -380,6 +391,7 @@ def guiMenuInit() -> None:  # 추가적인 메뉴바를 설정한다
     # 내가 구현한 이미지 처리
     myProcessMenu = Menu(mainMenu)
     mainMenu.add_command(label="원본", command=equalImage)
+    mainMenu.add_command(label="저장", command=saveImage)
     mainMenu.add_cascade(label="이미지처리", menu=myProcessMenu)
 
     # opencv 활용 이미지 처리
